@@ -6,7 +6,7 @@ from string import capwords
 
 from zope.interface import implementer
 
-from marshmallow import Schema, fields, pre_load, post_load
+from marshmallow import Schema, fields, pre_load, post_load, ValidationError
 from sqlalchemy import (
     Column,
     String,
@@ -29,7 +29,7 @@ from sqlalchemy.sql.expression import func
 from clld.interfaces import ISource, ILanguage
 from clld.db.meta import DBSession, Base, CustomModelMixin
 from clld.db.models.common import (
-    Language, Source, HasSourceMixin, IdNameDescriptionMixin, IdentifierType, Identifier,
+    Language, Source, HasSourceMixin, IdNameDescriptionMixin, IdentifierType, Identifier, LanguageIdentifier
 )
 from clld.util import DeclEnum
 
@@ -439,9 +439,25 @@ class Languoid(CustomModelMixin, Language):
                 children_map[fpk].append(node)
         return tree_
 
+def validate_languoid_name(name):
+    name = name.lower().title() # To match format of database
+    query = DBSession.query(Languoid)\
+                     .filter_by(active=True, level=LanguoidLevel.language)\
+                     .join(LanguageIdentifier, LanguageIdentifier.language_pk == Languoid.pk)\
+                     .join(Identifier, and_(
+                         LanguageIdentifier.identifier_pk == Identifier.pk,
+                         Identifier.type == 'name', 
+                         Identifier.description == Languoid.GLOTTOLOG_NAME))\
+                     .filter(Languoid.name == name)
+
+    if query.count() > 0:
+        raise ValidationError(
+                'Glottolog name must be unique to other active languages')
+
+
 class LanguoidSchema(Schema):
     id = fields.Str(required=True)
-    name = fields.Str(required=True)
+    name = fields.Str(required=True, validate=validate_languoid_name)
     level = fields.Raw(required=True) # couldn't figure out NestedSchema for this
 
     @pre_load
