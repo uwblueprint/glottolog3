@@ -6,7 +6,8 @@ from collections import OrderedDict
 from pyramid.httpexceptions import (
     HTTPNotAcceptable, HTTPNotFound, HTTPFound, HTTPMovedPermanently,
 )
-from sqlalchemy import and_, true, false, null, or_
+from pyramid.view import view_config
+from sqlalchemy import and_, true, false, null, or_, exc
 from sqlalchemy.sql.expression import func
 from sqlalchemy.orm import joinedload
 from clld.db.meta import DBSession
@@ -19,6 +20,7 @@ from clld.web.util.htmllib import HTML
 from clld.web.util.multiselect import MultiSelect
 from clld.lib import bibtex
 from clld.interfaces import IRepresentation
+from clldutils.misc import slug
 
 from glottolog3.models import (
     Languoid, LanguoidStatus, LanguoidLevel, Macroarea, Doctype, Refprovider,
@@ -261,7 +263,8 @@ def quicksearch(request):
     return {'message': message, 'params': params, 'languoids': languoids,
         'map': map_, 'countries': countries}
 
-# ENDPOINT ADDED BY BLUEPRINT
+
+# ENDPOINTS ADDED BY BLUEPRINT
 def bpsearch(request):
     message = None
     query = DBSession.query(Languoid)
@@ -316,7 +319,102 @@ def bpsearch(request):
         DBSession.query(Country).order_by(Country.description)])
 
     return {'message': message, 'params': params, 'languoids': languoids,
-        'map': map_, 'countries': countries}
+            'map': map_, 'countries': countries}
+
+@view_config(
+        route_name='glottolog.bp_api_search',
+        request_method='GET',
+        renderer='json')
+def bp_api_search(request):
+    query = DBSession.query(Languoid)
+    term = request.params['bpsearch'].strip().lower()
+    namequerytype = request.params.get('namequerytype', 'part').strip().lower()
+    multilingual = request.params.get('multilingual', None)
+
+    if not term:
+        query = None
+    elif len(term) < 3:
+        return [{'message': 'Please enter at least three characters for a search.'}]
+    elif len(term) == 8 and GLOTTOCODE_PATTERN.match(term):
+        query = query.filter(Languoid.id == term)
+        kind = 'Glottocode'
+    else:
+        # list of criteria to search languoids by
+        crit = [Identifier.type == 'name']
+        ul_iname = func.unaccent(func.lower(Identifier.name))
+        ul_name = func.unaccent(term)
+        if namequerytype == 'whole':
+            crit.append(ul_iname == ul_name)
+        else:
+            crit.append(ul_iname.contains(ul_name))
+        if not multilingual:
+            # restrict to English identifiers
+            crit.append(func.coalesce(Identifier.lang, '').in_((u'', u'eng', u'en')))
+        crit = Language.identifiers.any(and_(*crit))
+        # add ISOs to query if length == 3
+        iso = Languoid.identifiers.any(type=IdentifierType.iso.value, name=term) if len(term) == 3 else None
+        query = query.filter(or_(
+            icontains(Languoid.name, term), 
+            crit,
+            iso))
+        kind = 'name part'
+
+    if query is None:
+        return []
+    else:
+        languoids = query.order_by(Languoid.name)\
+                .options(joinedload(Languoid.family)).all()
+        if not languoids:
+            message = 'No matching languoids found for \'' + term + '\''
+            return [{'message': message}]
+
+    return [{
+        'name': languoid.name,
+        'glottocode': languoid.id,
+        'iso': languoid.hid if languoid.hid else '',
+        'level': languoid.level.name
+        } for languoid in languoids]
+
+@view_config(
+        route_name='glottolog.add_identifier',
+        request_method='POST', 
+        renderer='json')
+def add_identifier(request):
+    # TODO: Add validity checks for parameters and unit tests
+
+    gcode = request.json_body['glottocode']
+    lang = request.json_body['language']
+    name = request.json_body['name']
+    type = request.json_body['type']
+    desc = request.json_body['description']
+
+    languoid = DBSession.query(Language) \
+                        .filter_by(id='{0}'.format(gcode)) \
+                        .first()
+
+    identifier = Identifier(
+        (name, type, desc, lang),
+        id='{0}-{1}-{2}-{3}'.format(
+        slug(name), slug(type), slug(desc or ''), lang),
+        name=name,
+        type=type,
+        description=desc,
+        lang=lang)
+
+    try:
+        DBSession.add(identifier)
+        DBSession.add(
+            LanguageIdentifier(language=languoid, identifier=identifier))
+        DBSession.flush()
+    except exc.SQLAlchemyError as e:
+        DBSession.rollback()
+        return { 'error': '{}'.format(e) }
+
+    return {'message': 'Identifier successfully added.',
+            'identifier': '%s' % identifier} 
+
+# BLUEPRINT CODE END
+
 
 def languages(request):
     if request.params.get('search'):
