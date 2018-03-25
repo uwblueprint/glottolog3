@@ -449,21 +449,29 @@ def validate_languoid_name(name):
                          Identifier.type == 'name', 
                          Identifier.description == Languoid.GLOTTOLOG_NAME))\
                      .filter(Languoid.name == name)
-
     if query.count() > 0:
         raise ValidationError(
                 'Glottolog name must be unique to other active languages')
+
+class LanguoidLevelField(fields.Field):
+    def _serialize(self, value, attr, obj):
+        if value == LanguoidLevel.family:
+            return 'LanguageFamily'
+        elif value == LanguoidLevel.language:
+            return 'Language'
+        elif value == LanguoidLevel.dialect:
+            return 'Dialect'
+        else:
+            raise ValidationError('Languoid level name not valid.')
+
+    def _deserialize(self, value, attr, data):
+        return LanguoidLevel.from_string(data['level'])
 
 
 class LanguoidSchema(Schema):
     id = fields.Str(required=True)
     name = fields.Str(required=True, validate=validate_languoid_name)
-    level = fields.Raw(required=True) # couldn't figure out NestedSchema for this
-
-    @pre_load
-    def from_string_languoid_level(self, data):
-        data['level'] = LanguoidLevel.from_string(data['level'])
-        return data
+    level = LanguoidLevelField(required=True)
 
     @post_load
     def make_languoid(self, data):
