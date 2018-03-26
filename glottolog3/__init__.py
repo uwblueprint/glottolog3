@@ -147,8 +147,12 @@ def main(global_config, **settings):
         'glottolog.add_languoid',
         '/languoid')
     config.add_route(
+        'glottolog.get_languoid',
+        '/languoid/{id}')
+    config.add_route(
         'glottolog.identifier', 
-        '/identifiers')
+        '/identifier')
+
 
     # UW blueprint code ends here
 

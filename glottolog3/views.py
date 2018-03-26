@@ -323,6 +323,7 @@ def bpsearch(request):
     return {'message': message, 'params': params, 'languoids': languoids,
             'map': map_, 'countries': countries}
 
+
 @view_config(
         route_name='glottolog.bp_api_search',
         request_method='GET',
@@ -376,6 +377,7 @@ def bp_api_search(request):
         'iso': languoid.hid if languoid.hid else '',
         'level': languoid.level.name
         } for languoid in languoids]
+
 
 @view_config(
         route_name='glottolog.identifier',
@@ -437,7 +439,7 @@ def delete_identifier(request):
 
     try:
         id_query = DBSession.query(Identifier) \
-                            .filter(Identifier.id == identifier_id) \
+                            .filter(Identifier.id == identifier_id) 
         DBSession.query(LanguageIdentifier) \
                  .filter(and_(LanguageIdentifier.language == languoid,
                           LanguageIdentifier.identifier == id_query.first())) \
@@ -491,6 +493,41 @@ def update_identifier(request):
     return { 'message': 
                 '{} identifier(s) successfully updated.'.format(num_updated),
              'identifier': '{}'.format(name) } 
+
+
+@view_config(
+    route_name='glottolog.add_languoid',
+    request_method='POST',
+    renderer='json')
+def add_languoid(request):
+    json_data = request.json_body
+
+    try:
+        languoid = LanguoidSchema().load(json_data)
+    except ValueError:
+        return {'error': 'Not a valid languoid level'}
+    if languoid.errors:
+        return {'error': languoid.errors}
+
+    try:
+        DBSession.add(languoid.data)
+        DBSession.flush()
+    except exc.SQLAlchemyError as e:
+        DBSession.rollback()
+        return {'error': e}
+
+    return json.dumps(LanguoidSchema().dump(languoid.data))
+
+
+@view_config(
+    route_name='glottolog.get_languoid',
+    renderer='json')
+def get_languoid(request):
+    l_id = request.matchdict['id']
+    languoid = DBSession.query(Languoid).filter(Languoid.id == l_id).first()
+    if languoid is None:
+        return {'error': 'Not a valid languoid ID'}
+    return json.dumps(LanguoidSchema().dump(languoid))
 
 
 # BLUEPRINT CODE END
@@ -559,30 +596,6 @@ def languages(request):
         map_ = None
     res.update(map=map_, languoids=languoids)
     return res
-
-@view_config(
-    route_name='glottolog.add_languoid',
-    request_method='POST',
-    renderer='json')
-def add_languoid(request):
-    json_data = request.json_body
-
-    try:
-        languoid = LanguoidSchema().load(json_data)
-    except ValueError:
-        return {'error': 'Not a valid languoid level'}
-    if languoid.errors:
-        return {'error': languoid.errors}
-
-    try:
-        DBSession.add(languoid.data)
-        DBSession.flush()
-    except exc.SQLAlchemyError as e:
-        DBSession.rollback()
-        return {'error': e}
-
-    return json.dumps(LanguoidSchema().dump(languoid.data))
-
 
 def langdoccomplexquery(request):
     res = {
