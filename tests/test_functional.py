@@ -118,13 +118,13 @@ def test_feeds(app, feed):
     # search term requires a minimum of 3 characters
     ('get', '/bp/api/search?bpsearch=en', None, '[{"message": "Please enter at least three characters for a search."}]'),
     # languages can be searched by glottocode
-    ('get', '/bp/api/search?bpsearch=kumy1244', None, '[{"glottocode": "kumy1244", "iso": "kum", "name": "Kumyk", "level": "language"}]'),
+    ('get', '/bp/api/search?bpsearch=kumy1244', None, '[{"glottocode": "kumy1244", "iso": "kum", "name": "Kumyk", "matched_identifiers": [], "level": "language"}]'),
     # english-only identifier matching by default
     ('get', '/bp/api/search?bpsearch=anglai', None, '[{"message": "No matching languoids found for \'anglai\'"}]'),
     # multilingual indentifier matching allows more results
-    ('get', '/bp/api/search?bpsearch=anglai&multilingual=true', None, '[{"glottocode": "stan1293", "iso": "eng", "name": "English", "level": "language"}, {"glottocode": "midd1317", "iso": "enm", "name": "Middle English", "level": "language"}, {"glottocode": "tsha1245", "iso": "tsj", "name": "Tshangla", "level": "language"}]'),
+    ('get', '/bp/api/search?bpsearch=anglai&multilingual=true', None, '[{"glottocode": "stan1293", "iso": "eng", "name": "English", "matched_identifiers": ["Anglais moderne", "anglais"], "level": "language"}, {"glottocode": "midd1317", "iso": "enm", "name": "Middle English", "matched_identifiers": ["Moyen anglais", "anglais moyen (1100-1500)"], "level": "language"}, {"glottocode": "tsha1245", "iso": "tsj", "name": "Tshangla", "matched_identifiers": ["Tshanglaish"], "level": "language"}]'),
     # partial word matching set by default
-    ('get', '/bp/api/search?bpsearch=klar', None, '[{"glottocode": "kumy1244", "iso": "kum", "name": "Kumyk", "level": "language"}]'),
+    ('get', '/bp/api/search?bpsearch=klar', None, '[{"glottocode": "kumy1244", "iso": "kum", "name": "Kumyk", "matched_identifiers": ["Kumuklar"], "level": "language"}]'),
     # whole word matching removes partial-match results
     ('get', '/bp/api/search?bpsearch=klar&namequerytype=whole', None, '[{"message": "No matching languoids found for \'klar\'"}]'),
 ])
