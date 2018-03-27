@@ -323,6 +323,18 @@ def bpsearch(request):
     return {'message': message, 'params': params, 'languoids': languoids,
             'map': map_, 'countries': countries}
 
+def identifier_similarity(identifiers, term):
+    # sorting key method that will return a lower rank for greater similarity
+    rank = 3
+    for i in identifiers:
+        if i.Identifier.name == term:
+            rank = 0
+        elif i.Identifier.name.startswith(term):
+            rank = min(rank, 1)
+        elif ' ' + term in i.Identifier.name:
+            rank = min(rank, 2)
+
+    return rank
 
 @view_config(
         route_name='glottolog.search',
@@ -367,8 +379,8 @@ def bp_api_search(request):
     
     # group together identifiers that matched for the same languoid
     mapped_results = {k:list(g) for k, g in groupby(results, lambda x: x.Languoid)}
-    # order languoids by name (query does not always return items in same order)
-    ordered_results = OrderedDict(sorted(mapped_results.items(), key=lambda (k, v): k.name))
+    # order languoid results by greatest identifier similarity, and then by name to break ties + consistency
+    ordered_results = OrderedDict(sorted(mapped_results.items(), key=lambda (k, v): (identifier_similarity(v,term), k.name)))
 
     return [{
         'name': k.name,
