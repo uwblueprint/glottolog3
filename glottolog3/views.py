@@ -325,13 +325,15 @@ def bpsearch(request):
 
 def identifier_score(identifier, term):
     # sorting key method that will return a lower rank for greater similarity
-    if identifier == term:
+    lower_id = identifier.lower()
+    coverage = float(len(term))/len(lower_id)
+    if lower_id == term:
         return 0
-    elif identifier.startswith(term):
-        return 1
-    elif ' ' + term in identifier:
-        return 2
-    return 3
+    elif lower_id.startswith(term):
+        return 1 - coverage
+    elif ' ' + term in lower_id:
+        return 2 - coverage
+    return 3 - coverage
 
 def best_identifier_score(identifiers, term):
     rank = 3
