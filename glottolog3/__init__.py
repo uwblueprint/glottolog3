@@ -153,8 +153,8 @@ def main(global_config, **settings):
         views.languages,
         renderer='language/bpsearch_html.mako')
     config.add_route(
-        'glottolog.bp_api_search',
-        'bp/api/search')
+        'glottolog.search',
+        '/search')
     config.add_route(
         'glottolog.add_identifier',
         '/identifiers')

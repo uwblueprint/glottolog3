@@ -325,12 +325,12 @@ def bpsearch(request):
 
 
 @view_config(
-        route_name='glottolog.bp_api_search',
+        route_name='glottolog.search',
         request_method='GET',
         renderer='json')
 def bp_api_search(request):
     query = DBSession.query(Languoid, LanguageIdentifier, Identifier).join(LanguageIdentifier).join(Identifier)
-    term = request.params['bpsearch'].strip().lower()
+    term = request.params['q'].strip().lower()
     namequerytype = request.params.get('namequerytype', 'part').strip().lower()
     multilingual = request.params.get('multilingual', None)
 
@@ -363,8 +363,7 @@ def bp_api_search(request):
         results = query.order_by(Languoid.name)\
                 .options(joinedload(Languoid.family)).all()
         if not results:
-            message = 'No matching languoids found for \'' + term + '\''
-            return [{'message': message}]
+            return []
     
     # group together identifiers that matched for the same languoid
     mapped_results = {k:list(g) for k, g in groupby(results, lambda x: x.Languoid)}
