@@ -249,11 +249,13 @@ class Languoid(CustomModelMixin, Language):
         'Languoid',
         order_by='Languoid.name, Languoid.id',
         foreign_keys=[family_pk],
+        cascade="all,delete",
         backref=backref('family', remote_side=[pk]))
     children = relationship(
         'Languoid',
         order_by='Languoid.name, Languoid.id',
         foreign_keys=[father_pk],
+        cascade="all,delete",
         backref=backref('father', remote_side=[pk]))
     macroareas = relationship(
         Macroarea,
@@ -459,7 +461,7 @@ def validate_languoid_name(name):
                      .join(LanguageIdentifier, LanguageIdentifier.language_pk == Languoid.pk)\
                      .join(Identifier, and_(
                          LanguageIdentifier.identifier_pk == Identifier.pk,
-                         Identifier.type == 'name', 
+                         Identifier.type == 'name',
                          Identifier.description == Languoid.GLOTTOLOG_NAME))\
                      .filter(Languoid.name == name)
     if query.count() > 0:
@@ -512,9 +514,10 @@ class LanguoidStatusField(fields.Field):
 class LanguoidSchema(Schema):
     pk = fields.Int(dump_only=True)
 
-    id = fields.Str(required=True)
+    id = fields.Str(required=True, dump_only=True)
     name = fields.Str(required=True, validate=validate_languoid_name)
     level = LanguoidLevelField(required=True)
+    active = fields.Bool(default=True)
 
     latitude = fields.Number(validate=lambda n: -90 <= n <= 90)
     longitude = fields.Number(validate=lambda n: -180 <= n <= 180)
@@ -536,10 +539,6 @@ class LanguoidSchema(Schema):
     macroareas = fields.Nested(MacroareaSchema, many=True)
     countries = fields.Nested(CountrySchema, many=True)
     #TODO: make endpoints to add/remove/change descendants, children, macroareas, countries
-
-    @post_load
-    def make_languoid(self, data):
-        return Languoid(**data)
 
 
 # index datatables.Refs.default_order
