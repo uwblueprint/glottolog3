@@ -166,9 +166,6 @@ def main(global_config, **settings):
         '/identifier/{type}/{name}',
         request_method='DELETE')
 
-
-
-
     # UW blueprint code ends here
 
     for name in 'credits glossary cite downloads contact'.split():
