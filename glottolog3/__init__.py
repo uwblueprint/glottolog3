@@ -150,8 +150,23 @@ def main(global_config, **settings):
         'glottolog.get_languoid',
         '/languoid/{id}')
     config.add_route(
-        'glottolog.identifier', 
-        '/identifier')
+        'glottolog.add_identifier', 
+        '/{glottocode}/identifier',
+        request_method='POST')
+    config.add_route(
+        'glottolog.get_identifier',
+        '/identifier/{type}/{name}',
+        request_method='GET')
+    config.add_route(
+        'glottolog.put_identifier', 
+        '/identifier/{type}/{name}',
+        request_method='PUT')
+    config.add_route(
+        'glottolog.delete_identifier', 
+        '/identifier/{type}/{name}',
+        request_method='DELETE')
+
+
 
 
     # UW blueprint code ends here

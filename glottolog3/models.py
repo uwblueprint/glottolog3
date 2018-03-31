@@ -6,7 +6,7 @@ from string import capwords
 
 from zope.interface import implementer
 
-from marshmallow import Schema, fields, pre_load, post_load, ValidationError
+from marshmallow import Schema, fields, pre_load, post_load, validates_schema, ValidationError
 from sqlalchemy import (
     Column,
     String,
@@ -32,6 +32,7 @@ from clld.db.models.common import (
     Language, Source, HasSourceMixin, IdNameDescriptionMixin, IdentifierType, Identifier, LanguageIdentifier
 )
 from clld.util import DeclEnum
+from clldutils.misc import slug
 
 from glottolog3.interfaces import IProvider
 
@@ -452,19 +453,18 @@ class Languoid(CustomModelMixin, Language):
                 children_map[fpk].append(node)
         return tree_
 
-def validate_languoid_name(name):
-    name = name.lower().title() # To match format of database
+def validate_unique(name, type):
+    name = name.title()
     query = DBSession.query(Languoid)\
                      .filter_by(active=True, level=LanguoidLevel.language)\
                      .join(LanguageIdentifier, LanguageIdentifier.language_pk == Languoid.pk)\
                      .join(Identifier, and_(
                          LanguageIdentifier.identifier_pk == Identifier.pk,
-                         Identifier.type == 'name', 
-                         Identifier.description == Languoid.GLOTTOLOG_NAME))\
-                     .filter(Languoid.name == name)
+                         Identifier.type == type))\
+                     .filter(Identifier.name == name)
     if query.count() > 0:
         raise ValidationError(
-                'Glottolog name must be unique to other active languages')
+            'Identifier {} must be unique to other active languages'.format(type))
 
 class LanguoidLevelField(fields.Field):
     def _serialize(self, value, attr, obj):
@@ -513,7 +513,7 @@ class LanguoidSchema(Schema):
     pk = fields.Int(dump_only=True)
 
     id = fields.Str(required=True)
-    name = fields.Str(required=True, validate=validate_languoid_name)
+    name = fields.Str(required=True, validate=lambda n: validate_unique(n, 'name'))
     level = LanguoidLevelField(required=True)
 
     latitude = fields.Number(validate=lambda n: -90 <= n <= 90)
@@ -540,6 +540,39 @@ class LanguoidSchema(Schema):
     @post_load
     def make_languoid(self, data):
         return Languoid(**data)
+
+def validate_id_type(type):
+    if (type != IdentifierType.iso.value and \
+        type != IdentifierType.glottolog.value and \
+        type != IdentifierType.wals.value and \
+        type != IdentifierType.ethnologue.value and \
+        type != 'name'):
+        raise ValidationError('Invalid identifier type: {}'.format(type))
+   
+class IdentifierSchema(Schema):
+    id = fields.Str(default = '')
+    name = fields.Str(required=True)
+    type = fields.Str(required=True, validate=validate_id_type)
+    description = fields.Str(required=True)
+    lang = fields.Str(required=True) 
+
+    @pre_load()
+    def format_identifier(self, data):
+        data['id'] = '{0}-{1}-{2}-{3}'.format(
+            slug(data['name']), 
+            slug(data['type'] or ''), 
+            slug(data['description'] or ''), 
+            data['lang'])
+
+    @post_load
+    def make_identifier(self, data):
+        return Identifier(
+            (data['name'], data['type'], data['description'], data['lang']),
+            **data)
+
+    @validates_schema(skip_on_field_errors=True)
+    def validate_schema(self, data):
+        validate_unique(data['name'], data['type'])
 
 
 # index datatables.Refs.default_order
