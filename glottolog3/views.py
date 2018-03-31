@@ -3,6 +3,7 @@ import re
 import json
 import transaction
 from collections import OrderedDict
+from itertools import groupby
 
 from marshmallow import ValidationError, pprint
 from pyramid.httpexceptions import (
@@ -323,14 +324,31 @@ def bpsearch(request):
     return {'message': message, 'params': params, 'languoids': languoids,
             'map': map_, 'countries': countries}
 
+def identifier_score(identifier, term):
+    # sorting key method that will return a lower rank for greater similarity
+    lower_id = identifier.lower()
+    coverage = float(len(term))/len(lower_id)
+    if lower_id == term:
+        return 0
+    elif lower_id.startswith(term):
+        return 1 - coverage
+    elif ' ' + term in lower_id:
+        return 2 - coverage
+    return 3 - coverage
+
+def best_identifier_score(identifiers, term):
+    rank = 3
+    for i in identifiers:
+        rank = min(rank,identifier_score(i.Identifier.name,term))
+    return rank
 
 @view_config(
-        route_name='glottolog.bp_api_search',
+        route_name='glottolog.search',
         request_method='GET',
         renderer='json')
 def bp_api_search(request):
-    query = DBSession.query(Languoid)
-    term = request.params['bpsearch'].strip().lower()
+    query = DBSession.query(Languoid, LanguageIdentifier, Identifier).join(LanguageIdentifier).join(Identifier)
+    term = request.params['q'].strip().lower()
     namequerytype = request.params.get('namequerytype', 'part').strip().lower()
     multilingual = request.params.get('multilingual', None)
 
@@ -343,40 +361,40 @@ def bp_api_search(request):
         kind = 'Glottocode'
     else:
         # list of criteria to search languoids by
-        crit = [Identifier.type == 'name']
+        filters = []
         ul_iname = func.unaccent(func.lower(Identifier.name))
         ul_name = func.unaccent(term)
         if namequerytype == 'whole':
-            crit.append(ul_iname == ul_name)
+            filters.append(ul_iname == ul_name)
         else:
-            crit.append(ul_iname.contains(ul_name))
+            filters.append(ul_iname.contains(ul_name))
         if not multilingual:
             # restrict to English identifiers
-            crit.append(func.coalesce(Identifier.lang, '').in_((u'', u'eng', u'en')))
-        crit = Language.identifiers.any(and_(*crit))
-        # add ISOs to query if length == 3
-        iso = Languoid.identifiers.any(type=IdentifierType.iso.value, name=term) if len(term) == 3 else None
-        query = query.filter(or_(
-            icontains(Languoid.name, term),
-            crit,
-            iso))
+            filters.append(func.coalesce(Identifier.lang, '').in_((u'', u'eng', u'en')))
+        
+        query = query.filter(and_(*filters))
         kind = 'name part'
 
     if query is None:
         return []
     else:
-        languoids = query.order_by(Languoid.name)\
+        results = query.order_by(Languoid.name)\
                 .options(joinedload(Languoid.family)).all()
-        if not languoids:
-            message = 'No matching languoids found for \'' + term + '\''
-            return [{'message': message}]
+        if not results:
+            return []
+    
+    # group together identifiers that matched for the same languoid
+    mapped_results = {k:list(g) for k, g in groupby(results, lambda x: x.Languoid)}
+    # order languoid results by greatest identifier similarity, and then by name to break ties + consistency
+    ordered_results = OrderedDict(sorted(mapped_results.items(), key=lambda (k, v): (best_identifier_score(v,term), k.name)))
 
     return [{
-        'name': languoid.name,
-        'glottocode': languoid.id,
-        'iso': languoid.hid if languoid.hid else '',
-        'level': languoid.level.name
-        } for languoid in languoids]
+        'name': k.name,
+        'glottocode': k.id,
+        'iso': k.hid if k.hid else '',
+        'level': k.level.name,
+        'matched_identifiers': sorted(set([i.Identifier.name for i in v]), key=lambda x: identifier_score(x, term))  if kind != 'Glottocode' else [],
+        } for k, v in ordered_results.items()]
 
 
 @view_config(
