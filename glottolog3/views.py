@@ -433,16 +433,23 @@ def add_identifier(request):
             'identifier': '%s' % identifier}
 
 
+def query_languoid(DBSession, id):
+    return DBSession.query(Languoid) \
+                    .filter(Languoid.id == l_id) \
+                    .filter(Language.active == True) \
+                    .first()
+
+
 @view_config(
     route_name='glottolog.get_languoid',
     renderer='json')
 def get_languoid(request):
     l_id = request.matchdict['id']
-    languoid = DBSession.query(Languoid).filter(Languoid.id == l_id).first()
+    languoid = query_languoid(DBSession, l_id)
     if languoid is None:
         request.response.status = 404
         return {'error': 'Not a valid languoid ID'}
-    return json.dumps(LanguoidSchema().dump(languoid))
+    return LanguoidSchema().dump(languoid).data
 
 
 @view_config(
@@ -470,7 +477,7 @@ def add_languoid(request):
         return {'error': "{}".format(e)}
 
     request.response.status = 201
-    return json.dumps(LanguoidSchema().dump(Languoid(**data)))
+    return LanguoidSchema().dump(Languoid(**data)).data
 
 
 @view_config(
@@ -479,7 +486,7 @@ def add_languoid(request):
     renderer='json')
 def put_languoid(request):
     l_id = request.matchdict['id']
-    languoid = DBSession.query(Languoid).filter(Languoid.id == l_id).first()
+    languoid = query_languoid(DBSession, l_id)
     if languoid is None:
         request.response.status = 404
         return {'error': 'Not a valid languoid ID'}
@@ -503,7 +510,7 @@ def put_languoid(request):
         DBSession.rollback()
         return {'error': "{}".format(e)}
 
-    return json.dumps(LanguoidSchema().dump(languoid))
+    return LanguoidSchema().dump(languoid).data
 
 
 @view_config(
@@ -512,7 +519,7 @@ def put_languoid(request):
     renderer='json')
 def delete_languoid(request):
     l_id = request.matchdict['id']
-    languoid = DBSession.query(Languoid).filter(Languoid.id == l_id).first()
+    languoid = query_languoid(DBSession, l_id)
     if languoid is None:
         request.response.status = 404
         return {'error': 'Not a valid languoid ID'}
