@@ -5,7 +5,7 @@ import transaction
 from collections import OrderedDict
 from itertools import groupby
 
-from marshmallow import ValidationError, pprint
+from marshmallow import ValidationError
 from pyramid.httpexceptions import (
     HTTPNotAcceptable, HTTPNotFound, HTTPFound, HTTPMovedPermanently,
 )
@@ -386,7 +386,7 @@ def bp_api_search(request):
     # group together identifiers that matched for the same languoid
     mapped_results = {k:list(g) for k, g in groupby(results, lambda x: x.Languoid)}
     # order languoid results by greatest identifier similarity, and then by name to break ties + consistency
-    ordered_results = OrderedDict(sorted(mapped_results.items(), key=lambda (k, v): (best_identifier_score(v,term), k.name)))
+    ordered_results = OrderedDict(sorted(mapped_results.items(), key=lambda k, v: (best_identifier_score(v,term), k.name)))
 
     return [{
         'name': k.name,
@@ -437,25 +437,31 @@ def add_identifier(request):
     return json.dumps(IdentifierSchema().dump(identifier))
 
 
+def query_identifier(type, name):
+    type = type.lower()
+    name = name.title() if type == 'name' else name.lower()
+
+    id_query = DBSession.query(Identifier) \
+                          .filter(and_(Identifier.name == name,
+                                       Identifier.type == type)) \
+
+    if id_query.count() == 0:
+        raise Exception(('No identifier found with '
+                         'type: {0}, and name: {1}').format(type, name))
+
+    return id_query
+
+
 @view_config(
         route_name='glottolog.get_identifier',
         renderer='json')
 def get_identifier(request):
-    type = request.matchdict['type'].lower()
-    name = request.matchdict['name']
-    name = name.title() if type == 'name' else name.lower()
-
-    identifier = DBSession.query(Identifier) \
-                          .filter(and_(Identifier.name == name,
-                                       Identifier.type == type)) \
-                          .first()
-
-    if identifier == None:
+    try: 
+        identifier = query_identifier(request.matchdict['type'],
+                                      request.matchdict['name']).first()
+    except Exception as e:
         request.response.status = 404
-        return {
-            'error': ('No identifier found with '
-                      'type: {0}, and name: {1}').format(type, name)
-        }
+        return {'error': str(e)}
 
     return json.dumps(IdentifierSchema().dump(identifier)) 
 
@@ -465,22 +471,13 @@ def get_identifier(request):
         renderer='json')
 def put_identifier(request):
     ID_REQ_FIELDS = ['name', 'type', 'description', 'lang'] 
-    type = request.matchdict['type'].lower()
-    name = request.matchdict['name']
-    name = name.title() if type == 'name' else name.lower()
     new_identifier = request.json_body
-
-    identifier = DBSession.query(Identifier) \
-                          .filter(and_(Identifier.name == name,
-                                       Identifier.type == type)) \
-                          .first()
-
-    if identifier == None:
+    try: 
+        identifier = query_identifier(request.matchdict['type'],
+                                      request.matchdict['name']).first()
+    except Exception as e:
         request.response.status = 404
-        return {
-            'error': ('No identifier found with '
-                      'type: {0}, and name: {1}').format(type, name)
-        }
+        return {'error': str(e)}
 
     # Fill missing
     for field in ID_REQ_FIELDS:
@@ -517,19 +514,12 @@ def put_identifier(request):
         route_name='glottolog.delete_identifier',
         renderer='json')
 def delete_identifier(request):
-    type = request.matchdict['type'].lower()
-    name = request.matchdict['name']
-    name = name.title() if type == 'name' else name.lower()
-
-    id_query = DBSession.query(Identifier) \
-                        .filter(and_(Identifier.name == name,
-                                     Identifier.type == type))
-    if (id_query.count() == 0):
+    try: 
+        id_query = query_identifier(request.matchdict['type'],
+                                    request.matchdict['name'])
+    except Exception as e:
         request.response.status = 404
-        return {
-            'error': ('No identifier found with '
-                      'type: {0}, and name: {1}').format(type, name)
-        }
+        return {'error': str(e)}
 
     try:
         DBSession.query(LanguageIdentifier) \

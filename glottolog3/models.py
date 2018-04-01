@@ -542,19 +542,23 @@ class LanguoidSchema(Schema):
         return Languoid(**data)
 
 def validate_id_type(type):
-    if (type != IdentifierType.iso.value and \
-        type != IdentifierType.glottolog.value and \
-        type != IdentifierType.wals.value and \
-        type != IdentifierType.ethnologue.value and \
-        type != 'name'):
+    VALID_TYPES = [
+        IdentifierType.iso.value,
+        IdentifierType.glottolog.value,
+        IdentifierType.wals.value,
+        IdentifierType.ethnologue.value,
+        'name'
+    ]
+
+    if not type in VALID_TYPES:
         raise ValidationError('Invalid identifier type: {}'.format(type))
-   
+
 class IdentifierSchema(Schema):
     id = fields.Str(default = '')
     name = fields.Str(required=True)
     type = fields.Str(required=True, validate=validate_id_type)
-    description = fields.Str(required=True)
-    lang = fields.Str(required=True) 
+    description = fields.Str(default = '')
+    lang = fields.Str(default = 'en') 
 
     @pre_load()
     def format_identifier(self, data):
