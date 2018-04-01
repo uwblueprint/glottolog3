@@ -547,11 +547,12 @@ class LanguoidSchema(Schema):
 
     # identifiers = TODO: wait for leon's thing
 
-    descendants = fields.Nested('self', many=True)
-    children = fields.Nested('self', many=True)
+    descendants = fields.Nested(
+        'self', many=True, only=['id', 'name', 'level'], dump_only=True)
+    children = fields.Nested(
+        'self', many=True, only=['id', 'name', 'level'], dump_only=True)
     macroareas = fields.Nested(MacroareaSchema, many=True)
     countries = fields.Nested(CountrySchema, many=True)
-    #TODO: make endpoints to add/remove/change descendants, children, macroareas, countries
 
     class Meta:
         ordered = True

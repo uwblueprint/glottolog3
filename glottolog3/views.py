@@ -533,8 +533,64 @@ def delete_languoid(request):
         return {'error': "{}".format(e)}
 
     request.response.status = 204
-    return json.dumps(LanguoidSchema().dump(languoid))
+    return LanguoidSchema().dump(languoid).data
 
+@view_config(
+    route_name='glottolog.add_descendant',
+    request_method='POST',
+    renderer='json')
+def add_descendant(request):
+    glottocode = request.matchdict['glottocode']
+    languoid = query_languoid(DBSession, glottocode)
+    if languoid is None:
+        request.response.status = 404
+        return {'error': 'Not a valid languoid ID'}
+
+    d_glottocode = request.json_body.get('descendant')
+    descendant = query_languoid(DBSession, d_glottocode)
+    if not descendant:
+        request.response.status = 404
+        return {'error': 'descendant specified in payload does not exist'}
+
+    try:
+        descendants = languoid.descendants
+        descendants.append(descendant)
+        setattr(languoid, 'descendants', descendants)
+        DBSession.flush()
+    except exc.SQLAlchemyError as e:
+        DBSession.rollback()
+        return { 'error': '{}'.format(e) }
+
+    return LanguoidSchema().dump(languoid).data
+
+
+@view_config(
+    route_name='glottolog.add_child',
+    request_method='POST',
+    renderer='json')
+def add_child(request):
+    glottocode = request.matchdict['glottocode']
+    languoid = query_languoid(DBSession, glottocode)
+    if languoid is None:
+        request.response.status = 404
+        return {'error': 'Not a valid languoid ID'}
+
+    c_glottocode = request.json_body.get('child')
+    child = query_languoid(DBSession, c_glottocode)
+    if not child:
+        request.response.status = 404
+        return {'error': 'child specified in payload does not exist'}
+
+    try:
+        children = languoid.children
+        children.append(child)
+        setattr(languoid, 'children', children)
+        DBSession.flush()
+    except exc.SQLAlchemyError as e:
+        DBSession.rollback()
+        return { 'error': '{}'.format(e) }
+
+    return LanguoidSchema().dump(languoid).data
 # BLUEPRINT CODE END
 
 

@@ -174,6 +174,14 @@ def main(global_config, **settings):
         'glottolog.delete_languoid',
         '/languoid/{glottocode}',
         request_method='DELETE')
+    config.add_route(
+        'glottolog.add_descendant',
+        '/languoid/{glottocode}/descendant',
+        request_method='POST')
+    config.add_route(
+        'glottolog.add_child',
+        '/languoid/{glottocode}/child',
+        request_method='POST')
 
     # UW blueprint code ends here
 
