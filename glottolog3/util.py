@@ -182,7 +182,7 @@ def getRefs(params):
             .filter(TreeClosureTable.parent_pk.in_(
                 [l.pk for l in params['languoids']]))
         query = query.filter(subquery.exists())
-                
+
     if params.get('doctypes'):
         filtered = True
         subquery = DBSession.query(Refdoctype).filter_by(ref_pk=Ref.pk)\

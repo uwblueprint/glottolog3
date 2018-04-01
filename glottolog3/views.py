@@ -435,7 +435,7 @@ def add_identifier(request):
 
 def query_languoid(DBSession, id):
     return DBSession.query(Languoid) \
-                    .filter(Languoid.id == l_id) \
+                    .filter(Languoid.id == id) \
                     .filter(Language.active == True) \
                     .first()
 
@@ -444,8 +444,8 @@ def query_languoid(DBSession, id):
     route_name='glottolog.get_languoid',
     renderer='json')
 def get_languoid(request):
-    l_id = request.matchdict['id']
-    languoid = query_languoid(DBSession, l_id)
+    glottocode = request.matchdict['glottocode']
+    languoid = query_languoid(DBSession, glottocode)
     if languoid is None:
         request.response.status = 404
         return {'error': 'Not a valid languoid ID'}
@@ -485,8 +485,8 @@ def add_languoid(request):
     request_method='PUT',
     renderer='json')
 def put_languoid(request):
-    l_id = request.matchdict['id']
-    languoid = query_languoid(DBSession, l_id)
+    glottocode = request.matchdict['glottocode']
+    languoid = query_languoid(DBSession, glottocode)
     if languoid is None:
         request.response.status = 404
         return {'error': 'Not a valid languoid ID'}
@@ -518,8 +518,8 @@ def put_languoid(request):
     request_method='DELETE',
     renderer='json')
 def delete_languoid(request):
-    l_id = request.matchdict['id']
-    languoid = query_languoid(DBSession, l_id)
+    glottocode = request.matchdict['glottocode']
+    languoid = query_languoid(DBSession, glottocode)
     if languoid is None:
         request.response.status = 404
         return {'error': 'Not a valid languoid ID'}
