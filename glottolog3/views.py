@@ -309,6 +309,7 @@ def bpsearch(request):
     if query is None:
         languoids = []
     else:
+        query.filter(Language.active == True)
         languoids = query.order_by(Languoid.name)\
             .options(joinedload(Languoid.family)).all()
         if not languoids:
@@ -370,7 +371,7 @@ def bp_api_search(request):
         if not multilingual:
             # restrict to English identifiers
             filters.append(func.coalesce(Identifier.lang, '').in_((u'', u'eng', u'en')))
-        
+
         query = query.filter(and_(*filters))
         kind = 'name part'
 
@@ -381,7 +382,7 @@ def bp_api_search(request):
                 .options(joinedload(Languoid.family)).all()
         if not results:
             return []
-    
+
     # group together identifiers that matched for the same languoid
     mapped_results = {k:list(g) for k, g in groupby(results, lambda x: x.Languoid)}
     # order languoid results by greatest identifier similarity, and then by name to break ties + consistency
