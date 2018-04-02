@@ -442,26 +442,27 @@ def query_identifier(type, name):
     name = name.title() if type == 'name' else name.lower()
 
     id_query = DBSession.query(Identifier) \
-                          .filter(and_(Identifier.name == name,
-                                       Identifier.type == type)) \
+                        .filter(and_(Identifier.name == name,
+                                     Identifier.type == type))
+    result = [id_query, None]
 
     if id_query.count() == 0:
-        raise Exception(('No identifier found with '
-                         'type: {0}, and name: {1}').format(type, name))
-
-    return id_query
+        result[1] = ('No identifier found with '
+                     'type: {0}, and name: {1}').format(type, name)
+    return result
 
 
 @view_config(
         route_name='glottolog.get_identifier',
         renderer='json')
 def get_identifier(request):
-    try: 
-        identifier = query_identifier(request.matchdict['type'],
-                                      request.matchdict['name']).first()
-    except Exception as e:
+    id_query, errors = query_identifier(request.matchdict['type'],
+                                        request.matchdict['name'])
+    if errors:
         request.response.status = 404
-        return {'error': str(e)}
+        return {'error': errors}
+
+    identifier = id_query.first()
 
     return json.dumps(IdentifierSchema().dump(identifier)) 
 
@@ -470,20 +471,27 @@ def get_identifier(request):
         route_name='glottolog.put_identifier',
         renderer='json')
 def put_identifier(request):
-    ID_REQ_FIELDS = ['name', 'type', 'description', 'lang'] 
+    REQ_FIELDS = ['name', 'type'] 
+    OPT_FIELDS = ['description', 'lang']
     new_identifier = request.json_body
-    try: 
-        identifier = query_identifier(request.matchdict['type'],
-                                      request.matchdict['name']).first()
-    except Exception as e:
+    id_query, errors = query_identifier(request.matchdict['type'],
+                                        request.matchdict['name'])
+    if errors:
         request.response.status = 404
-        return {'error': str(e)}
+        return {'error': errors}
+
+    identifier = id_query.first()
+
+    # TODO: Fix hack for conditional validation
+    if not any (k in new_identifier for k in REQ_FIELDS):
+        # Set false if both type and name are missing
+        new_identifier['req_validate'] = False 
 
     # Fill missing
-    for field in ID_REQ_FIELDS:
+    for field in (REQ_FIELDS + OPT_FIELDS):
         if not field in new_identifier:
             new_identifier[field] = getattr(identifier, field)
-
+    
     try:
         data, errors = IdentifierSchema().load(new_identifier)
     except (ValueError, ValidationError) as e:
@@ -494,6 +502,7 @@ def put_identifier(request):
         return {'error': errors}
 
     try:
+        new_identifier.pop('req_validate', None)
         for key in new_identifier:
             # Cannot direct lookup on identifier object
             setattr(identifier, key, getattr(data, key))
@@ -514,12 +523,11 @@ def put_identifier(request):
         route_name='glottolog.delete_identifier',
         renderer='json')
 def delete_identifier(request):
-    try: 
-        id_query = query_identifier(request.matchdict['type'],
-                                    request.matchdict['name'])
-    except Exception as e:
+    id_query, errors = query_identifier(request.matchdict['type'],
+                                        request.matchdict['name'])
+    if errors:
         request.response.status = 404
-        return {'error': str(e)}
+        return {'error': errors}
 
     try:
         DBSession.query(LanguageIdentifier) \

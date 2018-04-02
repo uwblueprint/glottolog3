@@ -454,7 +454,6 @@ class Languoid(CustomModelMixin, Language):
         return tree_
 
 def validate_unique(name, type):
-    name = name.title()
     query = DBSession.query(Languoid)\
                      .filter_by(active=True, level=LanguoidLevel.language)\
                      .join(LanguageIdentifier, LanguageIdentifier.language_pk == Languoid.pk)\
@@ -554,29 +553,40 @@ def validate_id_type(type):
         raise ValidationError('Invalid identifier type: {}'.format(type))
 
 class IdentifierSchema(Schema):
-    id = fields.Str(default = '')
+    id = fields.Method("format_id")
     name = fields.Str(required=True)
     type = fields.Str(required=True, validate=validate_id_type)
-    description = fields.Str(default = '')
+    description = fields.Str(default = None)
     lang = fields.Str(default = 'en') 
+    req_validate = fields.Boolean(missing = True)
 
-    @pre_load()
-    def format_identifier(self, data):
-        data['id'] = '{0}-{1}-{2}-{3}'.format(
-            slug(data['name']), 
-            slug(data['type'] or ''), 
-            slug(data['description'] or ''), 
-            data['lang'])
+    def format_id(self, data):
+        return '{0}-{1}-{2}-{3}'.format(
+            slug(data.name), 
+            slug(data.type), 
+            slug(data.description or ''), 
+            data.lang)
+
+    @pre_load
+    def format_fields(self, data):
+        if data['type'] == 'name':
+            data['name'] = data['name'].title()
+        else:
+            data['name'] = data['name'].lower()
+        return data
 
     @post_load
     def make_identifier(self, data):
+        data.pop('req_validate', None)
         return Identifier(
             (data['name'], data['type'], data['description'], data['lang']),
             **data)
 
+    # TODO: Fix hack to conditionally validate name and type
     @validates_schema(skip_on_field_errors=True)
     def validate_schema(self, data):
-        validate_unique(data['name'], data['type'])
+        if data['req_validate']:
+            validate_unique(data['name'], data['type'])
 
 
 # index datatables.Refs.default_order
