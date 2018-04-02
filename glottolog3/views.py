@@ -425,16 +425,16 @@ def add_identifier(request):
         DBSession.add(
             LanguageIdentifier(language=languoid, identifier=identifier))
         DBSession.flush()
+        result = json.dumps(IdentifierSchema().dump(identifier))
     except exc.SQLAlchemyError as e:
         request.response.status = 400
         DBSession.rollback()
         return { 'error': '{}'.format(e) }
     
     # So we can use identifier object without session
-    DBSession.expunge(identifier)
     transaction.commit()
 
-    return json.dumps(IdentifierSchema().dump(identifier))
+    return result 
 
 
 def query_identifier(type, name):
@@ -473,6 +473,7 @@ def get_identifier(request):
 def put_identifier(request):
     REQ_FIELDS = ['name', 'type'] 
     OPT_FIELDS = ['description', 'lang']
+    is_partial = False
     new_identifier = request.json_body
     id_query, errors = query_identifier(request.matchdict['type'],
                                         request.matchdict['name'])
@@ -482,18 +483,16 @@ def put_identifier(request):
 
     identifier = id_query.first()
 
-    # TODO: Fix hack for conditional validation
     if not any (k in new_identifier for k in REQ_FIELDS):
-        # Set false if both type and name are missing
-        new_identifier['req_validate'] = False 
-
-    # Fill missing
-    for field in (REQ_FIELDS + OPT_FIELDS):
-        if not field in new_identifier:
+        is_partial = True 
+    else:
+        all_fields = REQ_FIELDS + OPT_FIELDS
+        update_fields = (k for k in all_fields if k not in new_identifier)
+        for field in update_fields:
             new_identifier[field] = getattr(identifier, field)
-    
+
     try:
-        data, errors = IdentifierSchema().load(new_identifier)
+        data, errors = IdentifierSchema(partial=is_partial).load(new_identifier)
     except (ValueError, ValidationError) as e:
         request.response.status = 400
         return {'error': '{}'.format(e)}
@@ -502,12 +501,12 @@ def put_identifier(request):
         return {'error': errors}
 
     try:
-        new_identifier.pop('req_validate', None)
         for key in new_identifier:
             # Cannot direct lookup on identifier object
             setattr(identifier, key, getattr(data, key))
 
         DBSession.flush()
+        result = json.dumps(IdentifierSchema().dump(identifier))
     except exc.SQLAlchemyError as e:
         request.response.status = 400
         DBSession.rollback()
@@ -516,7 +515,7 @@ def put_identifier(request):
     # Commit if no errors
     transaction.commit()
 
-    return json.dumps(IdentifierSchema().dump(data)) 
+    return result 
 
 
 @view_config(

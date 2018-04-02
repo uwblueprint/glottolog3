@@ -558,34 +558,37 @@ class IdentifierSchema(Schema):
     type = fields.Str(required=True, validate=validate_id_type)
     description = fields.Str(default = None)
     lang = fields.Str(default = 'en') 
-    req_validate = fields.Boolean(missing = True)
 
     def format_id(self, data):
-        return '{0}-{1}-{2}-{3}'.format(
-            slug(data.name), 
-            slug(data.type), 
-            slug(data.description or ''), 
-            data.lang)
+        if data.name and data.type:
+            return '{0}-{1}-{2}-{3}'.format(
+                slug(data.name), 
+                slug(data.type), 
+                slug(data.description), 
+                data.lang)
+        else:
+            return None
 
     @pre_load
     def format_fields(self, data):
-        if data['type'] == 'name':
+        if data.get('type') == 'name':
             data['name'] = data['name'].title()
-        else:
+        elif 'name' in data:
             data['name'] = data['name'].lower()
         return data
 
     @post_load
     def make_identifier(self, data):
-        data.pop('req_validate', None)
         return Identifier(
-            (data['name'], data['type'], data['description'], data['lang']),
+            (data.get('name'),
+             data.get('type'),
+             data['description'],
+             data['lang']),
             **data)
 
-    # TODO: Fix hack to conditionally validate name and type
     @validates_schema(skip_on_field_errors=True)
     def validate_schema(self, data):
-        if data['req_validate']:
+        if 'name' in data and 'type' in data: 
             validate_unique(data['name'], data['type'])
 
 
