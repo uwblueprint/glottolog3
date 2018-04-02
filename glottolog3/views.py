@@ -384,7 +384,7 @@ def bp_api_search(request):
     # group together identifiers that matched for the same languoid
     mapped_results = {k:list(g) for k, g in groupby(results, lambda x: x.Languoid)}
     # order languoid results by greatest identifier similarity, and then by name to break ties + consistency
-    ordered_results = OrderedDict(sorted(mapped_results.items(), key=lambda k, v: (best_identifier_score(v,term), k.name)))
+    ordered_results = OrderedDict(sorted(mapped_results.items(), key=lambda x: (best_identifier_score(x[1],term), x[0].name)))
 
     return [{
         'name': k.name,
