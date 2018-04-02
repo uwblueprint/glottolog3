@@ -3,6 +3,7 @@
 Project related model.
 """
 from string import capwords
+import re
 
 from zope.interface import implementer
 
@@ -36,6 +37,7 @@ from clldutils.misc import slug
 
 from glottolog3.interfaces import IProvider
 
+GLOTTOCODE_PATTERN = re.compile('[a-z][a-z0-9]{3}[1-9]\d{3}$')
 
 def github(path):
     return 'https://github.com/clld/glottolog/blob/master/{0}'.format(path)
@@ -72,6 +74,9 @@ class MacroareaSchema(Schema):
     description = fields.Str()
     markup_descripion = fields.Str()
 
+    class Meta:
+        ordered = True
+
 
 class Country(Base, IdNameDescriptionMixin):
     """
@@ -84,6 +89,9 @@ class CountrySchema(Schema):
     name = fields.Str()
     description = fields.Str()
     markup_descripion = fields.Str()
+
+    class Meta:
+        ordered = True
 
 
 class Languoidmacroarea(Base):
@@ -250,11 +258,13 @@ class Languoid(CustomModelMixin, Language):
         'Languoid',
         order_by='Languoid.name, Languoid.id',
         foreign_keys=[family_pk],
+        cascade="all,delete",
         backref=backref('family', remote_side=[pk]))
     children = relationship(
         'Languoid',
         order_by='Languoid.name, Languoid.id',
         foreign_keys=[father_pk],
+        cascade="all,delete",
         backref=backref('father', remote_side=[pk]))
     macroareas = relationship(
         Macroarea,
@@ -465,6 +475,7 @@ def validate_unique(name, type):
         raise ValidationError(
             'Identifier {} must be unique to other active languages'.format(type))
 
+
 class LanguoidLevelField(fields.Field):
     def _serialize(self, value, attr, obj):
         if value == LanguoidLevel.family:
@@ -507,18 +518,24 @@ class LanguoidStatusField(fields.Field):
     def _deserialize(self, value, attr, data):
         return LanguoidStatus.from_string(data['status'])
 
+def validate_glottocode(glottocode):
+    if len(glottocode) != 8 or not GLOTTOCODE_PATTERN.match(glottocode):
+        print(GLOTTOCODE_PATTERN.match(glottocode))
+        print(glottocode)
+        raise ValidationError('Glottocode does not follow proper format')
 
 class LanguoidSchema(Schema):
     pk = fields.Int(dump_only=True)
 
-    id = fields.Str(required=True)
+    id = fields.Str(required=True, validate=validate_glottocode)
     name = fields.Str(required=True, validate=lambda n: validate_unique(n, 'name'))
     level = LanguoidLevelField(required=True)
+    active = fields.Bool(default=True, load_only=True)
 
     latitude = fields.Number(validate=lambda n: -90 <= n <= 90)
     longitude = fields.Number(validate=lambda n: -180 <= n <= 180)
 
-    hid = fields.Str() #TODO: check uniqueness
+    hid = fields.Str()
     status = LanguoidStatusField()
 
     bookkeeping = fields.Bool(default=False)
@@ -528,17 +545,17 @@ class LanguoidSchema(Schema):
     child_language_count = fields.Int()
     child_dialect_count = fields.Int()
 
-    # identifiers = wait for leon's thing
+    # identifiers = TODO: wait for leon's thing
 
-    descendants = fields.Nested('self', many=True)
-    children = fields.Nested('self', many=True)
+    descendants = fields.Nested(
+        'self', many=True, only=['id', 'name', 'level'], dump_only=True)
+    children = fields.Nested(
+        'self', many=True, only=['id', 'name', 'level'], dump_only=True)
     macroareas = fields.Nested(MacroareaSchema, many=True)
     countries = fields.Nested(CountrySchema, many=True)
-    #TODO: make endpoints to add/remove/change descendants, children, macroareas, countries
 
-    @post_load
-    def make_languoid(self, data):
-        return Languoid(**data)
+    class Meta:
+        ordered = True
 
 def validate_id_type(type):
     VALID_TYPES = [

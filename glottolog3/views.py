@@ -32,14 +32,11 @@ from glottolog3.models import (
 from glottolog3.config import CFG
 from glottolog3.util import getRefs, get_params
 from glottolog3.datatables import Refs
-from glottolog3.models import Country, SPECIAL_FAMILIES
+from glottolog3.models import Country, SPECIAL_FAMILIES, GLOTTOCODE_PATTERN
 from glottolog3.adapters import get_selected_languages_map
 
 
 YEAR_PATTERN = re.compile('[0-9]{4}$')
-
-GLOTTOCODE_PATTERN = re.compile('[a-z][a-z0-9]{3}[1-9]\d{3}$')
-
 
 class LanguoidsMultiSelect(MultiSelect):
     def format_result(self, l):
@@ -310,6 +307,7 @@ def bpsearch(request):
     if query is None:
         languoids = []
     else:
+        query.filter(Language.active == True)
         languoids = query.order_by(Languoid.name)\
             .options(joinedload(Languoid.family)).all()
         if not languoids:
@@ -371,7 +369,7 @@ def bp_api_search(request):
         if not multilingual:
             # restrict to English identifiers
             filters.append(func.coalesce(Identifier.lang, '').in_((u'', u'eng', u'en')))
-        
+
         query = query.filter(and_(*filters))
         kind = 'name part'
 
@@ -382,7 +380,7 @@ def bp_api_search(request):
                 .options(joinedload(Languoid.family)).all()
         if not results:
             return []
-    
+
     # group together identifiers that matched for the same languoid
     mapped_results = {k:list(g) for k, g in groupby(results, lambda x: x.Languoid)}
     # order languoid results by greatest identifier similarity, and then by name to break ties + consistency
@@ -546,6 +544,25 @@ def delete_identifier(request):
     return {} 
 
 
+def query_languoid(DBSession, id):
+    return DBSession.query(Languoid) \
+                    .filter(Languoid.id == id) \
+                    .filter(Language.active == True) \
+                    .first()
+
+
+@view_config(
+    route_name='glottolog.get_languoid',
+    renderer='json')
+def get_languoid(request):
+    glottocode = request.matchdict['glottocode']
+    languoid = query_languoid(DBSession, glottocode)
+    if languoid is None:
+        request.response.status = 404
+        return {'error': 'Not a valid languoid ID'}
+    return LanguoidSchema().dump(languoid).data
+
+
 @view_config(
     route_name='glottolog.add_languoid',
     request_method='POST',
@@ -554,33 +571,137 @@ def add_languoid(request):
     json_data = request.json_body
 
     try:
-        languoid = LanguoidSchema().load(json_data)
+        data, errors = LanguoidSchema().load(json_data)
     except ValueError:
+        request.response.status = 400
         return {'error': 'Not a valid languoid level'}
-    if languoid.errors:
-        return {'error': languoid.errors}
+    if errors:
+        request.response.status = 400
+        return {'error': errors}
 
     try:
-        DBSession.add(languoid.data)
+        DBSession.add(Languoid(**data))
         DBSession.flush()
     except exc.SQLAlchemyError as e:
+        request.response.status = 400
         DBSession.rollback()
-        return {'error': e}
+        return {'error': "{}".format(e)}
 
-    return json.dumps(LanguoidSchema().dump(languoid.data))
+    request.response.status = 201
+    return LanguoidSchema().dump(Languoid(**data)).data
 
 
 @view_config(
-    route_name='glottolog.get_languoid',
+    route_name='glottolog.put_languoid',
+    request_method='PUT',
     renderer='json')
-def get_languoid(request):
-    l_id = request.matchdict['id']
-    languoid = DBSession.query(Languoid).filter(Languoid.id == l_id).first()
+def put_languoid(request):
+    glottocode = request.matchdict['glottocode']
+    languoid = query_languoid(DBSession, glottocode)
     if languoid is None:
+        request.response.status = 404
         return {'error': 'Not a valid languoid ID'}
-    return json.dumps(LanguoidSchema().dump(languoid))
+
+    json_data = request.json_body
+    try:
+        data, errors = LanguoidSchema(partial=True).load(json_data)
+    except ValueError:
+        request.response.status = 400
+        return {'error': 'Not a valid languoid level'}
+    if errors:
+        request.response.status = 400
+        return {'error': errors}
+
+    try:
+        for key, value in data.items():
+            setattr(languoid, key, value)
+        DBSession.flush()
+    except exc.SQLAlchemyError as e:
+        request.response.status = 400
+        DBSession.rollback()
+        return {'error': "{}".format(e)}
+
+    return LanguoidSchema().dump(languoid).data
 
 
+@view_config(
+    route_name='glottolog.delete_languoid',
+    request_method='DELETE',
+    renderer='json')
+def delete_languoid(request):
+    glottocode = request.matchdict['glottocode']
+    languoid = query_languoid(DBSession, glottocode)
+    if languoid is None:
+        request.response.status = 404
+        return {'error': 'Not a valid languoid ID'}
+
+    try:
+        languoid.active = False
+        DBSession.flush()
+    except exc.SQLAlchemyError as e:
+        request.response.status = 400
+        DBSession.rollback()
+        return {'error': "{}".format(e)}
+
+    request.response.status = 204
+    return LanguoidSchema().dump(languoid).data
+
+@view_config(
+    route_name='glottolog.add_descendant',
+    request_method='POST',
+    renderer='json')
+def add_descendant(request):
+    glottocode = request.matchdict['glottocode']
+    languoid = query_languoid(DBSession, glottocode)
+    if languoid is None:
+        request.response.status = 404
+        return {'error': 'Not a valid languoid ID'}
+
+    d_glottocode = request.json_body.get('descendant')
+    descendant = query_languoid(DBSession, d_glottocode)
+    if not descendant:
+        request.response.status = 404
+        return {'error': 'descendant specified in payload does not exist'}
+
+    try:
+        descendants = languoid.descendants
+        descendants.append(descendant)
+        setattr(languoid, 'descendants', descendants)
+        DBSession.flush()
+    except exc.SQLAlchemyError as e:
+        DBSession.rollback()
+        return { 'error': '{}'.format(e) }
+
+    return LanguoidSchema().dump(languoid).data
+
+
+@view_config(
+    route_name='glottolog.add_child',
+    request_method='POST',
+    renderer='json')
+def add_child(request):
+    glottocode = request.matchdict['glottocode']
+    languoid = query_languoid(DBSession, glottocode)
+    if languoid is None:
+        request.response.status = 404
+        return {'error': 'Not a valid languoid ID'}
+
+    c_glottocode = request.json_body.get('child')
+    child = query_languoid(DBSession, c_glottocode)
+    if not child:
+        request.response.status = 404
+        return {'error': 'child specified in payload does not exist'}
+
+    try:
+        children = languoid.children
+        children.append(child)
+        setattr(languoid, 'children', children)
+        DBSession.flush()
+    except exc.SQLAlchemyError as e:
+        DBSession.rollback()
+        return { 'error': '{}'.format(e) }
+
+    return LanguoidSchema().dump(languoid).data
 # BLUEPRINT CODE END
 
 
