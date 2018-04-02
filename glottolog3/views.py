@@ -31,14 +31,11 @@ from glottolog3.models import (
 from glottolog3.config import CFG
 from glottolog3.util import getRefs, get_params
 from glottolog3.datatables import Refs
-from glottolog3.models import Country, SPECIAL_FAMILIES
+from glottolog3.models import Country, SPECIAL_FAMILIES, GLOTTOCODE_PATTERN
 from glottolog3.adapters import get_selected_languages_map
 
 
 YEAR_PATTERN = re.compile('[0-9]{4}$')
-
-GLOTTOCODE_PATTERN = re.compile('[a-z][a-z0-9]{3}[1-9]\d{3}$')
-
 
 class LanguoidsMultiSelect(MultiSelect):
     def format_result(self, l):
