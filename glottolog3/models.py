@@ -556,7 +556,7 @@ class IdentifierSchema(Schema):
     id = fields.Method("format_id")
     name = fields.Str(required=True)
     type = fields.Str(required=True, validate=validate_id_type)
-    description = fields.Str(default = None)
+    description = fields.Str()
     lang = fields.Str(default = 'en') 
 
     def format_id(self, data):
