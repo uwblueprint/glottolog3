@@ -1,6 +1,7 @@
 from datetime import date
 import re
 import json
+import transaction
 from collections import OrderedDict
 from itertools import groupby
 
@@ -26,7 +27,7 @@ from clldutils.misc import slug
 
 from glottolog3.models import (
     Languoid, LanguoidSchema, LanguoidStatus, LanguoidLevel, Macroarea, Doctype,
-    Refprovider, TreeClosureTable, BOOKKEEPING,
+    IdentifierSchema, Refprovider, TreeClosureTable, BOOKKEEPING,
 )
 from glottolog3.config import CFG
 from glottolog3.util import getRefs, get_params
@@ -383,7 +384,7 @@ def bp_api_search(request):
     # group together identifiers that matched for the same languoid
     mapped_results = {k:list(g) for k, g in groupby(results, lambda x: x.Languoid)}
     # order languoid results by greatest identifier similarity, and then by name to break ties + consistency
-    ordered_results = OrderedDict(sorted(mapped_results.items(), key=lambda (k, v): (best_identifier_score(v,term), k.name)))
+    ordered_results = OrderedDict(sorted(mapped_results.items(), key=lambda k, v: (best_identifier_score(v,term), k.name)))
 
     return [{
         'name': k.name,
@@ -396,41 +397,151 @@ def bp_api_search(request):
 
 @view_config(
         route_name='glottolog.add_identifier',
-        request_method='POST',
         renderer='json')
 def add_identifier(request):
-    # TODO: Add validity checks for parameters and unit tests
-
-    gcode = request.json_body['glottocode']
-    lang = request.json_body['language']
-    name = request.json_body['name']
-    type = request.json_body['type']
-    desc = request.json_body['description']
+    gcode = request.matchdict['glottocode'].lower()
 
     languoid = DBSession.query(Language) \
                         .filter_by(id='{0}'.format(gcode)) \
                         .first()
 
-    identifier = Identifier(
-        (name, type, desc, lang),
-        id='{0}-{1}-{2}-{3}'.format(
-        slug(name), slug(type), slug(desc or ''), lang),
-        name=name,
-        type=type,
-        description=desc,
-        lang=lang)
-
+    if languoid == None:
+        request.response.status = 404 
+        return {'error': 'No language found with glottocode: {}'.format(gcode)}
+    
+    try:
+        identifier, errors = IdentifierSchema().load(request.json_body)
+    except (ValueError, ValidationError) as e:
+        request.response.status = 400
+        return {'error': '{}'.format(e)}
+    if errors:
+        request.response.status = 400
+        return {'error': errors}
+    
     try:
         DBSession.add(identifier)
         DBSession.add(
             LanguageIdentifier(language=languoid, identifier=identifier))
         DBSession.flush()
+        result = json.dumps(IdentifierSchema().dump(identifier))
     except exc.SQLAlchemyError as e:
+        request.response.status = 400
         DBSession.rollback()
         return { 'error': '{}'.format(e) }
+    
+    # So we can use identifier object without session
+    transaction.commit()
 
-    return {'message': 'Identifier successfully added.',
-            'identifier': '%s' % identifier}
+    return result 
+
+
+def query_identifier(type, name):
+    type = type.lower()
+    name = name.title() if type == 'name' else name.lower()
+
+    id_query = DBSession.query(Identifier) \
+                        .filter(and_(Identifier.name == name,
+                                     Identifier.type == type))
+    result = [id_query, None]
+
+    if id_query.count() == 0:
+        result[1] = ('No identifier found with '
+                     'type: {0}, and name: {1}').format(type, name)
+    return result
+
+
+@view_config(
+        route_name='glottolog.get_identifier',
+        renderer='json')
+def get_identifier(request):
+    id_query, errors = query_identifier(request.matchdict['type'],
+                                        request.matchdict['name'])
+    if errors:
+        request.response.status = 404
+        return {'error': errors}
+
+    identifier = id_query.first()
+
+    return json.dumps(IdentifierSchema().dump(identifier)) 
+
+
+@view_config(
+        route_name='glottolog.put_identifier',
+        renderer='json')
+def put_identifier(request):
+    REQ_FIELDS = ['name', 'type'] 
+    OPT_FIELDS = ['description', 'lang']
+    is_partial = False
+    new_identifier = request.json_body
+    id_query, errors = query_identifier(request.matchdict['type'],
+                                        request.matchdict['name'])
+    if errors:
+        request.response.status = 404
+        return {'error': errors}
+
+    identifier = id_query.first()
+
+    if not any (k in new_identifier for k in REQ_FIELDS):
+        is_partial = True 
+    else:
+        all_fields = REQ_FIELDS + OPT_FIELDS
+        update_fields = (k for k in all_fields if k not in new_identifier)
+        for field in update_fields:
+            new_identifier[field] = getattr(identifier, field)
+
+    try:
+        data, errors = IdentifierSchema(partial=is_partial).load(new_identifier)
+    except (ValueError, ValidationError) as e:
+        request.response.status = 400
+        return {'error': '{}'.format(e)}
+    if errors:
+        request.response.status = 400
+        return {'error': errors}
+
+    try:
+        for key in new_identifier:
+            # Cannot direct lookup on identifier object
+            setattr(identifier, key, getattr(data, key))
+
+        DBSession.flush()
+        result = json.dumps(IdentifierSchema().dump(identifier))
+    except exc.SQLAlchemyError as e:
+        request.response.status = 400
+        DBSession.rollback()
+        return { 'error': '{}'.format(e) }
+    
+    # Commit if no errors
+    transaction.commit()
+
+    return result 
+
+
+@view_config(
+        route_name='glottolog.delete_identifier',
+        renderer='json')
+def delete_identifier(request):
+    id_query, errors = query_identifier(request.matchdict['type'],
+                                        request.matchdict['name'])
+    if errors:
+        request.response.status = 404
+        return {'error': errors}
+
+    try:
+        DBSession.query(LanguageIdentifier) \
+                 .filter(LanguageIdentifier.identifier == id_query.first()) \
+                 .delete()
+        id_query.delete()
+        DBSession.flush()
+    except exc.SQLAlchemyError as e:
+        request.response.status = 400
+        DBSession.rollback()
+        return { 'error': '{}'.format(e) }
+    
+    # Commit if no errors
+    transaction.commit()
+
+    # Return empty body for success
+    return {} 
 
 
 def query_languoid(DBSession, id):
