@@ -160,20 +160,20 @@ def main(global_config, **settings):
         '/identifier/{type}/{name}',
         request_method='GET')
     config.add_route(
-        'glottolog.add_identifier', 
+        'glottolog.add_identifier',
         'languoid/{glottocode}/identifier',
         request_method='POST')
     config.add_route(
-        'glottolog.put_identifier', 
+        'glottolog.put_identifier',
         '/identifier/{type}/{name}',
         request_method='PUT')
     config.add_route(
-        'glottolog.delete_identifier', 
+        'glottolog.delete_identifier',
         '/identifier/{type}/{name}',
         request_method='DELETE')
     config.add_route(
         'glottolog.get_languoid',
-        '/languoid/{id}',
+        '/languoid/{glottocode}',
         request_method='GET')
     config.add_route(
         'glottolog.add_languoid',
