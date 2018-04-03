@@ -518,15 +518,13 @@ class LanguoidStatusField(fields.Field):
     def _deserialize(self, value, attr, data):
         return LanguoidStatus.from_string(data['status'])
 
+
 def validate_glottocode(glottocode):
     if len(glottocode) != 8 or not GLOTTOCODE_PATTERN.match(glottocode):
-        print(GLOTTOCODE_PATTERN.match(glottocode))
-        print(glottocode)
         raise ValidationError('Glottocode does not follow proper format')
 
-class LanguoidSchema(Schema):
-    pk = fields.Int(dump_only=True)
 
+class LanguoidSchema(Schema):
     id = fields.Str(required=True, validate=validate_glottocode)
     name = fields.Str(required=True, validate=lambda n: validate_unique(n, 'name'))
     level = LanguoidLevelField(required=True)
@@ -545,7 +543,7 @@ class LanguoidSchema(Schema):
     child_language_count = fields.Int()
     child_dialect_count = fields.Int()
 
-    # identifiers = TODO: wait for leon's thing
+    identifiers = fields.Method("get_identifiers")
 
     descendants = fields.Nested(
         'self', many=True, only=['id', 'name', 'level'], dump_only=True)
@@ -556,6 +554,15 @@ class LanguoidSchema(Schema):
 
     class Meta:
         ordered = True
+
+    def get_identifiers(self, obj):
+        ids = DBSession.query(Identifier)\
+            .join(LanguageIdentifier, LanguageIdentifier.identifier_pk == Identifier.pk)\
+            .join(Languoid, Languoid.pk == LanguageIdentifier.language_pk)\
+            .filter(LanguageIdentifier.language_pk == obj.pk)\
+            .all()
+        return IdentifierSchema(many=True).dump(ids).data
+
 
 def validate_id_type(type):
     VALID_TYPES = [
@@ -574,14 +581,14 @@ class IdentifierSchema(Schema):
     name = fields.Str(required=True)
     type = fields.Str(required=True, validate=validate_id_type)
     description = fields.Str()
-    lang = fields.Str(default = 'en') 
+    lang = fields.Str(default = 'en')
 
     def format_id(self, data):
-        if data.name and data.type:
+        if slug(data.name) and slug(data.type):
             return '{0}-{1}-{2}-{3}'.format(
-                slug(data.name), 
-                slug(data.type), 
-                slug(data.description), 
+                slug(data.name),
+                slug(data.type),
+                '' if data.description is None else slug(data.description),
                 data.lang)
         else:
             return None
@@ -605,8 +612,11 @@ class IdentifierSchema(Schema):
 
     @validates_schema(skip_on_field_errors=True)
     def validate_schema(self, data):
-        if 'name' in data and 'type' in data: 
+        if 'name' in data and 'type' in data:
             validate_unique(data['name'], data['type'])
+
+    class Meta:
+        ordered = True
 
 
 # index datatables.Refs.default_order
