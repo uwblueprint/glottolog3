@@ -2,6 +2,7 @@ import json
 import transaction
 from collections import OrderedDict
 from itertools import groupby
+from unidecode import unidecode
 
 from marshmallow import ValidationError
 from pyramid.httpexceptions import (
@@ -25,7 +26,7 @@ from glottolog3.models import GLOTTOCODE_PATTERN
 # ENDPOINTS ADDED BY BLUEPRINT
 def identifier_score(identifier, term):
     # sorting key method that will return a lower rank for greater similarity
-    lower_id = identifier.lower()
+    lower_id = unidecode(identifier.lower())
     coverage = float(len(term))/len(lower_id)
     if lower_id == term:
         return 0
@@ -48,13 +49,15 @@ def best_identifier_score(identifiers, term):
 def bp_api_search(request):
     query = DBSession.query(Languoid, LanguageIdentifier, Identifier).join(LanguageIdentifier).join(Identifier)
     term = request.params['q'].strip().lower()
-    namequerytype = request.params.get('namequerytype', 'part').strip().lower()
-    multilingual = request.params.get('multilingual', None)
+    whole = request.params.get('whole', False)
+    multilingual = request.params.get('multilingual', True)
+
+    MIN_QUERY_LEN = 3
 
     if not term:
         query = None
-    elif len(term) < 3:
-        return [{'message': 'Please enter at least three characters for a search.'}]
+    elif len(term) < MIN_QUERY_LEN:
+        return [{'message': 'Query must be at least {} characters.'.format(MIN_QUERY_LEN)}]
     elif len(term) == 8 and GLOTTOCODE_PATTERN.match(term):
         query = query.filter(Languoid.id == term)
         kind = 'Glottocode'
@@ -63,7 +66,7 @@ def bp_api_search(request):
         filters = []
         ul_iname = func.unaccent(func.lower(Identifier.name))
         ul_name = func.unaccent(term)
-        if namequerytype == 'whole':
+        if whole:
             filters.append(ul_iname == ul_name)
         else:
             filters.append(ul_iname.contains(ul_name))
@@ -85,14 +88,20 @@ def bp_api_search(request):
     # group together identifiers that matched for the same languoid
     mapped_results = {k:list(g) for k, g in groupby(results, lambda x: x.Languoid)}
     # order languoid results by greatest identifier similarity, and then by name to break ties + consistency
-    ordered_results = OrderedDict(sorted(mapped_results.items(), key=lambda x: (best_identifier_score(x[1],term), x[0].name)))
+    ordered_results = OrderedDict(sorted(
+        mapped_results.items(),
+        key=lambda x: (best_identifier_score(x[1],term), x[0].name)
+    ))
 
     return [{
         'name': k.name,
         'glottocode': k.id,
         'iso': k.hid if k.hid else '',
         'level': k.level.name,
-        'matched_identifiers': sorted(set([i.Identifier.name for i in v]), key=lambda x: identifier_score(x, term))  if kind != 'Glottocode' else [],
+        'matched_identifiers': sorted(
+            set([i.Identifier.name for i in v]),
+            key=lambda x: identifier_score(x, term)
+        )  if kind != 'Glottocode' else [],
         } for k, v in ordered_results.items()]
 
 
