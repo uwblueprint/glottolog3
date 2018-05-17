@@ -49,8 +49,8 @@ def best_identifier_score(identifiers, term):
 def bp_api_search(request):
     query = DBSession.query(Languoid, LanguageIdentifier, Identifier).join(LanguageIdentifier).join(Identifier)
     term = request.params['q'].strip().lower()
-    whole = request.params.get('whole', False)
-    multilingual = request.params.get('multilingual', True)
+    whole = request.params.get('whole', "False")
+    multilingual = request.params.get('multilingual', "True")
 
     MIN_QUERY_LEN = 3
 
@@ -66,11 +66,11 @@ def bp_api_search(request):
         filters = []
         ul_iname = func.unaccent(func.lower(Identifier.name))
         ul_name = func.unaccent(term)
-        if whole:
+        if whole.lower() == 'true':
             filters.append(ul_iname == ul_name)
         else:
             filters.append(ul_iname.contains(ul_name))
-        if not multilingual:
+        if multilingual.lower() == 'false':
             # restrict to English identifiers
             filters.append(func.coalesce(Identifier.lang, '').in_((u'', u'eng', u'en')))
 
