@@ -83,12 +83,6 @@ def main(global_config, **settings):
     }
     settings['sitemaps'] = ['language', 'source']
     config = Configurator(settings=settings)
-    #
-    # Note: The following routes must be registered before including the clld web app,
-    # because they are special cases of a more general route pattern registered there.
-    #
-    config.add_route('languoid.xhtml', '/resource/languoid/id/{id:[^/\.]+}.xhtml')
-    config.add_route('reference.xhtml', '/resource/reference/id/{id:[^/\.]+}.xhtml')
 
     config.include('clldmpg')
     config.add_route_and_view(
@@ -99,59 +93,9 @@ def main(global_config, **settings):
                 req.route_url('sitemapindex')),
             content_type='text/plain'))
     config.registry.registerUtility(GLCtxFactoryQuery(), ICtxFactoryQuery)
-    config.register_menu(
-        #('dataset', partial(menu_item, 'dataset', label='Home')),
-        ('languages', partial(menu_item, 'languages', label='Languages')),
-        ('families', partial(menu_item, 'glottolog.families', label='Families')),
-        ('search', partial(menu_item, 'glottolog.languages', label='Language Search')),
-        ('sources', partial(menu_item, 'sources', label='References')),
-        ('query', partial(menu_item, 'langdoc.complexquery', label='Reference Search')),
-        ('about', partial(menu_item, 'about', label='About')),
-        # Menu Items created by UW Blueprint
-        ('bpsearch', partial(menu_item, 'glottolog.bpsearch', label='Blueprint Search')),
-    )
-    config.register_resource('provider', models.Provider, IProvider, with_index=True)
-    config.register_adapter(
-        adapter_factory('provider/index_html.mako', base=Index), IProvider)
-    config.add_view(views.redirect_languoid_xhtml, route_name='languoid.xhtml')
-    config.add_view(views.redirect_reference_xhtml, route_name='reference.xhtml')
-    config.add_route_and_view('news', '/news', views.news, renderer='news.mako')
-    config.add_route_and_view(
-        'glottolog.meta',
-        '/glottolog/glottologinformation',
-        views.glottologmeta,
-        renderer='glottologmeta.mako')
-    config.add_route_and_view(
-        'glottolog.families',
-        '/glottolog/family',
-        views.families,
-        renderer='families.mako')
-    config.add_route_and_view(
-        'glottolog.iso',
-        '/resource/languoid/iso/{id:[^/\.]+}',
-        views.iso)
-    config.add_route_and_view(
-        'glottolog.languages',
-        '/glottolog',
-        views.languages,
-        renderer='language/search_html.mako')
-    config.add_route_and_view(
-        'glottolog.childnodes',
-        '/db/getchildlects',
-        views.childnodes,
-        renderer='json')
-    config.add_route_and_view(
-        'langdoc.complexquery',
-        '/langdoc/complexquery',
-        views.langdoccomplexquery,
-        renderer='langdoccomplexquery.mako')
+    config.register_menu()
 
     # Endpoints created by UW Blueprint
-    config.add_route_and_view(
-        'glottolog.bpsearch',
-        '/bp/search',
-        views.languages,
-        renderer='language/bpsearch_html.mako')
     config.add_route(
         'glottolog.search',
         '/search')
@@ -198,29 +142,5 @@ def main(global_config, **settings):
 
     # UW blueprint code ends here
 
-    for name in 'credits glossary cite downloads contact'.split():
-        pp = '/' if name == 'credits' else '/meta/'
-        config.add_route_and_view(
-            'home.' + name,
-            pp + name,
-            getattr(views, name),
-            renderer=name + '.mako')
-
-    assert config.registry.unregisterUtility(provided=IDownload, name='dataset.cldf')
-    config.register_download(adapters.LanguoidCsvDump(
-        models.Languoid, 'glottolog3', description="Languoids as CSV"))
-    config.register_download(adapters.LanguoidN3Dump(
-        Language, 'glottolog3', description="Languoids as RDF"))
-    config.register_download(Download(
-        Source, 'glottolog3', ext='bib', description="References as BibTeX"))
-    config.register_download(N3Dump(
-        Source, 'glottolog3', description="References as RDF"))
-
-    config.add_route('langdocstatus', '/langdoc/status')
-    config.add_route('langdocstatus.browser', '/langdoc/status/browser')
-    config.add_route(
-        'langdocstatus.languages', '/langdoc/status/languages-{ed:[0-9]}-{sdt:[0-9]}')
-    config.scan('glottolog3.langdocstatus')
-    config.register_datatable('providers', Providers)
     config.add_subscriber(add_cors_headers_response_callback, NewRequest)
     return config.make_wsgi_app()
