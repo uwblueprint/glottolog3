@@ -64,6 +64,7 @@ def bp_api_search(request):
     else:
         # list of criteria to search languoids by
         filters = []
+        filters.append(Language.active == True)
         ul_iname = func.unaccent(func.lower(Identifier.name))
         ul_name = func.unaccent(term)
         if whole.lower() == 'true':
@@ -113,6 +114,7 @@ def add_identifier(request):
 
     languoid = DBSession.query(Language) \
                         .filter_by(id='{0}'.format(gcode)) \
+                        .filter(Language.active == True) \
                         .first()
 
     if languoid == None:

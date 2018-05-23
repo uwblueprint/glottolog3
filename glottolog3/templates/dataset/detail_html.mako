@@ -75,5 +75,16 @@
         <p>This will return a JSON object of the updated identifier and an error message otherwise.</p>
         <h4>DELETE</h4>
         <p>create a DELETE request to <code>/identifiers/{type}/{name}</code>. Will return an empty JSON object if success and message if failed.</p>
+
+        <h1>Issues</h1>
+        <p>Some features that need to be implemented or bugs that need to be fixed:</p>
+        <pre><code>
+          * Only admins should be allowed to use Admin endpoints. Currently these endpoints are usable by everyone
+          * Search endpoint should only be allowed on whitelisted sites like Poly. Currently usable by everyone
+          * Homepage might look weird when using HTTPS
+          * The Glottolog data may not always be usable for the purposes of Poly's autosuggest. Try out some common three-letter combos in the search endpoint to see that there are weird results (usually near the end of the results list)
+          * No automated importing of Glottolog data yet
+          * No GUI for the API yet
+        </code></pre>
     </div>
 </div>
